@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // -------------------------------------------------------------------------
+    // HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY VALIDATIONS
+    // -------------------------------------------------------------------------
+
+    function isValidItem(data) {
+      return data.title is string && data.title.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.category in ["Fans", "Electronics", "Textbooks", "Furniture", "Clothing", "Other"] &&
+             data.campus is string && data.campus.size() <= 100 &&
+             data.sellerName is string && data.sellerName.size() <= 100 &&
+             data.sellerPhone is string && data.sellerPhone.matches('^\\+?[0-9]{10,15}$') &&
+             data.imageUrl is string && data.imageUrl.size() <= 1000 &&
+             data.userId == request.auth.uid &&
+             data.isVerified == false; // Users cannot verify themselves
+    }
+
+    // -------------------------------------------------------------------------
+    // RULES
+    // -------------------------------------------------------------------------
+
+    // Global deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Items Collection
+    match /items/{itemId} {
+      allow list: if true; // Public listings
+      allow get: if true;
+      
+      allow create: if isSignedIn() && isValidItem(incoming()) && (incoming().createdAt == request.time);
+      
+      allow update: if isSignedIn() && isOwner(existing().userId) && 
+                      isValidItem(incoming()) &&
+                      incoming().userId == existing().userId &&
+                      incoming().createdAt == existing().createdAt &&
+                      // Only allow updating title, price, description, category, campus, phone, imageUrl
+                      incoming().diff(existing()).affectedKeys().hasOnly(['title', 'price', 'description', 'category', 'campus', 'sellerPhone', 'imageUrl', 'updatedAt']);
+      
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+
+    // Users Collection (PII protection)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

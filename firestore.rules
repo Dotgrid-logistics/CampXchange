@@ -1,0 +1,107 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // -------------------------------------------------------------------------
+    // HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY VALIDATIONS
+    // -------------------------------------------------------------------------
+
+    function isValidItem(data) {
+      return data.title is string && data.title.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.category in ["Fans", "Electronics", "Textbooks", "Furniture", "Clothing", "Other"] &&
+             data.campus is string && data.campus.size() <= 100 &&
+             data.condition in ["Used", "New"] &&
+             data.exchangeLocation is string && data.exchangeLocation.size() <= 100 &&
+             (data.exchangeLocation != "Another location" || (data.customExchangeLocation is string && data.customExchangeLocation.size() <= 200)) &&
+             data.listingPrice is number && data.listingPrice >= 0 &&
+             data.sellerName is string && data.sellerName.size() <= 100 &&
+             data.sellerPhone is string && data.sellerPhone.matches('^\\+?[0-9]{10,15}$') &&
+             data.imageUrl is string && data.imageUrl.size() <= 1000 &&
+             data.userId == request.auth.uid &&
+             (data.sellerType == null || data.sellerType in ["Individual", "Business"]);
+    }
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.accountType in ["Individual", "Business"] &&
+             (data.phone == null || (data.phone is string && data.phone.matches('^\\+?[0-9]{10,15}$'))) &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000));
+    }
+
+    // -------------------------------------------------------------------------
+    // RULES
+    // -------------------------------------------------------------------------
+
+    // Global deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Items Collection
+    match /items/{itemId} {
+      // Secure List: Public view is allowed, but we validate ID integrity if targeted
+      allow list: if true; 
+      allow get: if isValidId(itemId);
+      
+      allow create: if isSignedIn() && 
+                    isValidId(itemId) &&
+                    isValidItem(incoming()) && 
+                    incoming().isVerified == false &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if (
+        isSignedIn() && 
+        isValidId(itemId) &&
+        isOwner(existing().userId) && 
+        isValidItem(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().isVerified == existing().isVerified && // Protect verification status
+        incoming().createdAt == existing().createdAt &&
+        (
+          // Action: Edit Listing
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'price', 'description', 'category', 'campus', 'condition', 'exchangeLocation', 'customExchangeLocation', 'listingPrice', 'sellerPhone', 'imageUrl', 'sellerType', 'updatedAt'])
+        )
+      );
+      
+      allow delete: if isSignedIn() && isValidId(itemId) && isOwner(existing().userId);
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get, list: if isSignedIn(); // Allow discovery
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoURL', 'accountType', 'phone', 'updatedAt'])
+      );
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "Item": {
+      "title": "Item",
+      "description": "An item listed for sale on the marketplace.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Short catchy title" },
+        "price": { "type": "number", "description": "Price in Naira" },
+        "description": { "type": "string", "description": "AI-generated or manual description" },
+        "category": { "type": "string", "enum": ["Fans", "Electronics", "Textbooks", "Furniture", "Clothing", "Other"] },
+        "campus": { "type": "string", "description": "e.g., FUNAAB, OOU, TASUED" },
+        "sellerName": { "type": "string" },
+        "sellerPhone": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "condition": { "type": "string", "enum": ["Used", "New"] },
+        "exchangeLocation": { "type": "string" },
+        "customExchangeLocation": { "type": "string" },
+        "listingPrice": { "type": "number" },
+        "userId": { "type": "string" },
+        "sellerType": { "type": "string", "enum": ["Individual", "Business"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isVerified": { "type": "boolean" }
+      },
+      "required": ["title", "price", "category", "campus", "sellerPhone", "sellerName", "userId"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "accountType": { "type": "string", "enum": ["Individual", "Business"] },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "items": { "schema": "Item", "description": "Public item listings" },
+    "users": { "schema": "User", "description": "Private user metadata" }
+  }
+}
